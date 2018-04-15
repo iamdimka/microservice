@@ -10,7 +10,7 @@ export class Microservice {
   protected _cwd = process.cwd()
   protected _env = { ...process.env }
   protected _promises = new Set<Promise<any>>()
-  protected _shutdownCallbacks = [] as Function[]
+  protected _shutdownCallbacks: Array<() => any> = []
 
   static instance(): Microservice {
     if (!this._instance) {
@@ -129,18 +129,18 @@ export class Microservice {
     this.isGoingDown = true
 
     if (typeof reason === "string") {
-      console.info(`Going down: Got signal ${reason}`)
+      console.info(`Going down[PID: ${process.pid}]: Got signal ${reason}`)
     } else if (reason && reason instanceof Error) {
-      console.error(`Going down: Unhandled error ${reason.stack}`)
+      console.error(`Going down[PID: ${process.pid}]: Unhandled error ${reason.stack}`)
     }
 
     let code = 0
 
-    this._shutdownCallbacks.push(() => Promise.all(Array.from(this._promises)))
+    this._shutdownCallbacks.push(() => Promise.all([...this._promises]))
 
     while (this._shutdownCallbacks.length) {
       try {
-        const item = this._shutdownCallbacks.pop() as Function
+        const item: () => any = this._shutdownCallbacks.shift()!
         await item()
       } catch (e) {
         code = 1
@@ -151,7 +151,25 @@ export class Microservice {
     process.exit(code)
   }
 
-  registerShutdownCallback(fn: Function): this {
+  registerShutdownCallback(fn: () => any, opts?: { log?: string, timeout?: number }): this {
+    if (opts) {
+      this._shutdownCallbacks.push(() => {
+        if (opts.log) {
+          console.log(opts.log)
+        }
+
+        if (opts.timeout) {
+          return Promise.race([
+            fn(),
+            new Promise(resolve => setTimeout(resolve, opts.timeout!))
+          ])
+        }
+
+        return fn()
+      })
+      return this
+    }
+
     this._shutdownCallbacks.push(fn)
     return this
   }
