@@ -140,7 +140,7 @@ export class Microservice {
 
     while (this._shutdownCallbacks.length) {
       try {
-        const item: () => any = this._shutdownCallbacks.shift()!
+        const item: () => any = this._shutdownCallbacks.pop()!
         await item()
       } catch (e) {
         code = 1
@@ -149,6 +149,18 @@ export class Microservice {
     }
 
     process.exit(code)
+  }
+
+  getShutdownHookCb(): () => void {
+    let resolve: undefined | (() => void)
+    const promise = new Promise(fulfill => resolve = fulfill)
+    this.registerShutdownCallback(() => resolve && promise)
+
+    return () => {
+      if (resolve) {
+        resolve()
+      }
+    }
   }
 
   registerShutdownCallback(fn: () => any, opts?: { log?: string, timeout?: number }): this {
